@@ -61,10 +61,10 @@ bool RenderEngine::loadPlugin (const std::string& path)
         // all the values to 0.0f!
         fillAvailablePluginParameters (pluginParameters);
         
-        auto editor = plugin->createEditor();
-        auto bc = editor->getConstrainer();
-        editor->setBounds(0, 0, bc->getMinimumWidth(), bc->getMinimumHeight());
-        addAndMakeVisible (editor);
+        // auto editor = plugin->createEditor();
+        // auto bc = editor->getConstrainer();
+        // editor->setBounds(0, 0, bc->getMinimumWidth(), bc->getMinimumHeight());
+        // addAndMakeVisible (editor);
 
         return true;
     }
