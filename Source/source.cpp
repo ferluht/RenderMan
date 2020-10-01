@@ -118,24 +118,45 @@ namespace wrap
             RenderEngine::setPatch(patch);
         }
 
+        float wrapperGetParameter (int parameter)
+        {
+            return RenderEngine::getParameter(parameter);
+        }
+
+        void wrapperSetParameter (int parameter, float value)
+        {
+            RenderEngine::setParameter(parameter, value);
+        }
+
         boost::python::list wrapperGetPatch()
         {
             return pluginPatchToListOfTuples (RenderEngine::getPatch());
         }
-
-        void wrapperRenderPatch (int    midiNote,
-                                 int    midiVelocity,
-                                 double noteLength,
-                                 double renderLength)
+        
+        void wrapperPutMidi (int    status,
+                             int    data1,
+                             int    data2,
+                             int    time)
         {
-            if (midiNote > 255) midiNote = 255;
-            if (midiNote < 0) midiNote = 0;
-            if (midiVelocity > 255) midiVelocity = 255;
-            if (midiVelocity < 0) midiVelocity = 0;
-            RenderEngine::renderPatch(midiNote,
-                                      midiVelocity,
-                                      noteLength,
-                                      renderLength);
+            if (status > 255) status = 255;
+            if (status < 0) status = 0;
+            if (data1 > 255) data1 = 255;
+            if (data1 < 0) data1 = 0;
+            if (data2 > 255) data2 = 255;
+            if (data2 < 0) data2 = 0;
+            RenderEngine::putMidi(status, data1, data2, time);
+        }
+        
+        void wrapperCleanMidiBuffer ()
+        {
+            RenderEngine::cleanMidiBuffer();
+        }
+
+        void wrapperRenderPatch (double renderLength,
+                                 bool overridePatch = true)
+        {
+            RenderEngine::renderPatch(renderLength,
+                                      overridePatch);
         }
 
         boost::python::list wrapperGetMFCCFrames()
@@ -191,9 +212,14 @@ BOOST_PYTHON_MODULE(librenderman)
     using namespace wrap;
 
     class_<RenderEngineWrapper>("RenderEngine", init<int, int, int>())
+    .def("load_preset", &RenderEngineWrapper::loadPreset)
     .def("load_plugin", &RenderEngineWrapper::loadPlugin)
-    .def("set_patch", &RenderEngineWrapper::wrapperSetPatch)
     .def("get_patch", &RenderEngineWrapper::wrapperGetPatch)
+    .def("set_patch", &RenderEngineWrapper::wrapperSetPatch)
+    .def("put_midi", &RenderEngineWrapper::wrapperPutMidi)
+    .def("clean_midi_buffer", &RenderEngineWrapper::cleanMidiBuffer)
+    .def("get_parameter", &RenderEngineWrapper::wrapperGetParameter)
+    .def("set_parameter", &RenderEngineWrapper::wrapperSetParameter)
     .def("render_patch", &RenderEngineWrapper::wrapperRenderPatch)
     .def("get_mfcc_frames", &RenderEngineWrapper::wrapperGetMFCCFrames)
     .def("get_plugin_parameter_size", &RenderEngineWrapper::wrapperGetPluginParameterSize)

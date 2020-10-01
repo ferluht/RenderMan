@@ -9,6 +9,16 @@
 */
 
 #include "RenderEngine.h"
+//==============================================================================
+bool RenderEngine::loadPreset (const std::string& path)
+{
+    MemoryBlock mb;
+    File file = File(path);
+    file.loadFileAsData(mb);
+    bool loaded = VSTPluginFormat::loadFromFXBFile (plugin, mb.getData(), mb.getSize());
+    
+    return loaded;
+}
 
 //==============================================================================
 bool RenderEngine::loadPlugin (const std::string& path)
@@ -34,7 +44,6 @@ bool RenderEngine::loadPlugin (const std::string& path)
     String errorMessage;
 
     if (plugin != nullptr) delete plugin;
-
     plugin = pluginFormatManager.createPluginInstance (*pluginDescriptions[0],
                                                        sampleRate,
                                                        bufferSize,
@@ -51,6 +60,11 @@ bool RenderEngine::loadPlugin (const std::string& path)
         // Resize the pluginParameters patch type to fit this plugin and init
         // all the values to 0.0f!
         fillAvailablePluginParameters (pluginParameters);
+        
+        auto editor = plugin->createEditor();
+        auto bc = editor->getConstrainer();
+        editor->setBounds(0, 0, bc->getMinimumWidth(), bc->getMinimumHeight());
+        addAndMakeVisible (editor);
 
         return true;
     }
@@ -63,23 +77,64 @@ bool RenderEngine::loadPlugin (const std::string& path)
 }
 
 //==============================================================================
-void RenderEngine::renderPatch (const uint8  midiNote,
-                                const uint8  midiVelocity,
-                                const double noteLength,
-                                const double renderLength)
+void RenderEngine::putMidi (const uint8  status,
+                            const uint8  data1,
+                            const uint8  data2,
+                            const int    timeInSamples)
+{
+    midiDataBuffer.push_back({status, data1, data2, timeInSamples});
+}
+
+void RenderEngine::addMidiToBuffer (const uint8  status,
+                                    const uint8  data1,
+                                    const uint8  data2,
+                                    const int    timeInSamples,
+                                    MidiBuffer&  midiBuffer)
+{
+    switch (status) {
+        case (0x8):
+        {
+            MidiMessage msg = MidiMessage::noteOn (1, data1, data2);
+            msg.setTimeStamp(timeInSamples);
+            midiBuffer.addEvent (msg, msg.getTimeStamp());
+            break;
+        }
+        case (0x9):
+        {
+            MidiMessage msg = MidiMessage::noteOff (1, data1, data2);
+            msg.setTimeStamp(timeInSamples);
+            midiBuffer.addEvent (msg, msg.getTimeStamp());
+            break;
+        }
+        case (0xB):
+        {
+            MidiMessage msg = MidiMessage::controllerEvent(1, data1, data2);
+            msg.setTimeStamp(timeInSamples);
+            midiBuffer.addEvent (msg, msg.getTimeStamp());
+            break;
+        }
+        default:
+            break;
+    }
+}
+
+//==============================================================================
+void RenderEngine::cleanMidiBuffer ()
+{
+    midiDataBuffer.clear();
+}
+
+//==============================================================================
+void RenderEngine::renderPatch (const double renderLength,
+                                const bool overridePatch)
 {
     // Get the overriden patch and set the vst parameters with it.
-    PluginPatch overridenPatch = getPatch();
-    for (const auto& parameter : overridenPatch)
-        plugin->setParameter (parameter.first, parameter.second);
-
-    // Get the note on midiBuffer.
-    MidiMessage onMessage = MidiMessage::noteOn (1,
-                                                 midiNote,
-                                                 midiVelocity);
-    onMessage.setTimeStamp(0);
-    MidiBuffer midiNoteBuffer;
-    midiNoteBuffer.addEvent (onMessage, onMessage.getTimeStamp());
+    if (overridePatch)
+    {
+        PluginPatch overridenPatch = getPatch();
+        for (const auto& parameter : overridenPatch)
+            plugin->setParameter (parameter.first, parameter.second);
+    }
 
     // Setup fft here so it is destroyed when rendering is finished and
     // the stack unwinds so it doesn't share frames with a new patch.
@@ -106,24 +161,28 @@ void RenderEngine::renderPatch (const uint8  midiNote,
 
     plugin->prepareToPlay (sampleRate, bufferSize);
 
+    int j = 0;
+    
     for (int i = 0; i < numberOfBuffers; ++i)
     {
-        // Trigger note off if in the correct audio buffer.
-        ifTimeSetNoteOff (noteLength,
-                          sampleRate,
-                          bufferSize,
-                          1,
-                          midiNote,
-                          midiVelocity,
-                          i,
-                          midiNoteBuffer);
-
+        MidiBuffer midiBuffer;
+        
+        while (j < midiDataBuffer.size() &&
+               (midiDataBuffer[j].time >= i * bufferSize) &&
+               (midiDataBuffer[j].time < (i + 1) * bufferSize)) {
+                addMidiToBuffer(midiDataBuffer[j].status, midiDataBuffer[j].data1,
+                            midiDataBuffer[j].data2, midiDataBuffer[j].time, midiBuffer);
+                j ++;
+        }
+        
         // Turn Midi to audio via the vst.
-        plugin->processBlock (audioBuffer, midiNoteBuffer);
+        plugin->processBlock (audioBuffer, midiBuffer);
 
         // Get audio features and fill the datastructure.
         fillAudioFeatures (audioBuffer, fft);
     }
+    
+    midiDataBuffer.clear();
 }
 
 //=============================================================================
@@ -364,6 +423,18 @@ void RenderEngine::setPatch (const PluginPatch patch)
         "\n- Current size:  " << currentParameterSize <<
         "\n- Supplied size: " << newPatchParameterSize << std::endl;
     }
+}
+
+//==============================================================================
+float RenderEngine::getParameter (const int parameter)
+{
+    return plugin->getParameter (parameter);
+}
+
+//==============================================================================
+void RenderEngine::setParameter (const int parameter, const float value)
+{
+    plugin->setParameter (parameter, value);
 }
 
 //==============================================================================

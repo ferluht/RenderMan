@@ -26,6 +26,14 @@ using namespace juce;
 typedef std::vector<std::pair<int, float>>  PluginPatch;
 typedef std::vector<std::array<double, 13>> MFCCFeatures;
 
+struct MidiData
+{
+    uint8_t status;
+    uint8_t data1;
+    uint8_t data2;
+    int time;
+};
+
 class RenderEngine
 {
 public:
@@ -49,17 +57,33 @@ public:
         }
     }
 
+    bool loadPreset (const std::string& path);
 
     bool loadPlugin (const std::string& path);
 
     void setPatch (const PluginPatch patch);
+    
+    float getParameter (const int parameter);
+    
+    void setParameter (const int parameter, const float value);
 
     const PluginPatch getPatch();
+    
+    void putMidi (const uint8  status,
+                  const uint8  data1,
+                  const uint8  data2,
+                  const int    timeInSamples);
+    
+    void addMidiToBuffer (const uint8  status,
+                          const uint8  data1,
+                          const uint8  data2,
+                          const int    timeInSamples,
+                          MidiBuffer&  midiBuffer);
+    
+    void cleanMidiBuffer();
 
-    void renderPatch (const uint8  midiNote,
-                      const uint8  midiVelocity,
-                      const double noteLength,
-                      const double renderLength);
+    void renderPatch (const double renderLength,
+                      const bool overridePatch = true);
 
     const MFCCFeatures getMFCCFrames();
 
@@ -107,6 +131,7 @@ private:
     std::vector<double>  processedMonoAudioPreview;
     std::vector<double>  rmsFrames;
     double               currentRmsFrame;
+    std::vector<MidiData>midiDataBuffer;
 };
 
 
